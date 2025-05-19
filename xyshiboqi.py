@@ -314,7 +314,7 @@ def update():
         x_idx = ((-right[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)  
         y_idx = ((-left[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)   
 
-        accumulate_img *= 0.8
+        accumulate_img *= 0.9
         for xi, yi in zip(x_idx, y_idx):
             if 0 <= xi < accumulate_size and 0 <= yi < accumulate_size:
                 accumulate_img[yi, xi] += 1.0
