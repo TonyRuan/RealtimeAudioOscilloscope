@@ -6,6 +6,7 @@ import time
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtWidgets
 from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QToolButton, QStyle
 
 # 设置参数
 FORMAT = pyaudio.paInt16
@@ -191,6 +192,57 @@ win.setWindowTitle('实时音频示波器' + (" (模拟数据)" if not success e
 win.resize(800, 800)
 win.setBackground('black')
 
+# 新增：带图标的小方块按钮
+button_widget = QtWidgets.QWidget()
+button_layout = QtWidgets.QHBoxLayout()
+button_layout.setContentsMargins(0, 0, 0, 0)
+button_layout.setSpacing(5)
+button_widget.setLayout(button_layout)
+
+mirror_h_btn = QToolButton()
+mirror_h_btn.setIcon(QtWidgets.QApplication.style().standardIcon(QStyle.SP_ArrowLeft))
+mirror_h_btn.setToolTip("水平镜像")
+mirror_h_btn.setFixedSize(32, 32)
+
+mirror_v_btn = QToolButton()
+mirror_v_btn.setIcon(QtWidgets.QApplication.style().standardIcon(QStyle.SP_ArrowDown))
+mirror_v_btn.setToolTip("垂直镜像")
+mirror_v_btn.setFixedSize(32, 32)
+
+rotate_btn = QToolButton()
+rotate_btn.setIcon(QtWidgets.QApplication.style().standardIcon(QStyle.SP_BrowserReload))
+rotate_btn.setToolTip("旋转90°")
+rotate_btn.setFixedSize(32, 32)
+
+button_layout.addWidget(mirror_h_btn)
+button_layout.addWidget(mirror_v_btn)
+button_layout.addWidget(rotate_btn)
+
+# 新增：左下角布局
+main_layout = QtWidgets.QVBoxLayout()
+main_layout.setContentsMargins(0, 0, 0, 0)
+main_layout.setSpacing(0)
+container = QtWidgets.QWidget()
+container.setLayout(main_layout)
+main_layout.addWidget(win)
+
+# 左下角按钮浮动层
+float_widget = QtWidgets.QWidget(container)
+float_layout = QtWidgets.QVBoxLayout()
+float_layout.setContentsMargins(10, 10, 10, 10)
+float_layout.addStretch()
+float_layout.addWidget(button_widget, alignment=QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+float_widget.setLayout(float_layout)
+float_widget.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+float_widget.setGeometry(0, container.height()-60, 120, 60)
+float_widget.show()
+
+def resizeEvent(event):
+    float_widget.setGeometry(0, container.height()-60, 120, 60)
+container.resizeEvent = resizeEvent
+
+container.show()
+
 # 创建绘图区域
 plot = win.addPlot()
 plot.hideAxis('left')
@@ -221,6 +273,11 @@ scatter.setVisible(False)  # 隐藏原有散点
 img_item.setImage(accumulate_img, levels=(0, 7), autoLevels=False)
 
 
+# 新增：镜像/旋转状态变量
+mirror_h = False
+mirror_v = False
+rotate_count = 0  # 0, 1, 2, 3，表示旋转0/90/180/270度
+
 # 更新函数
 def update():
     global x_data, y_data, accumulate_img, rect_set
@@ -244,9 +301,8 @@ def update():
 
         max_points = min(2000, len(left))
 
-        # 正确的左右镜像：x轴取反
-        current_x = -right[:max_points]  # 左右镜像
-        current_y = -left[:max_points]   # 上下镜像（新增：取反实现左右+上下镜像）
+        current_x = -right[:max_points] 
+        current_y = -left[:max_points]   
         points_to_add = len(current_x)
         x_data = np.roll(x_data, points_to_add)
         y_data = np.roll(y_data, points_to_add)
@@ -255,15 +311,23 @@ def update():
 
         scatter.setData(x=x_data, y=y_data)
 
-        x_idx = ((-right[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)  # 左右镜像
-        y_idx = ((-left[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)   # 上下镜像（新增：取反实现左右+上下镜像）
+        x_idx = ((-right[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)  
+        y_idx = ((-left[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)   
 
         accumulate_img *= 0.8
         for xi, yi in zip(x_idx, y_idx):
             if 0 <= xi < accumulate_size and 0 <= yi < accumulate_size:
                 accumulate_img[yi, xi] += 1.0
 
-        img_item.setImage(accumulate_img, levels=(0, 7), autoLevels=False)
+        # 只在这里做显示变换
+        img_to_show = accumulate_img
+        if mirror_h:
+            img_to_show = np.fliplr(img_to_show)
+        if mirror_v:
+            img_to_show = np.flipud(img_to_show)
+        if rotate_count % 4 != 0:
+            img_to_show = np.rot90(img_to_show, k=rotate_count % 4)
+        img_item.setImage(img_to_show, levels=(0, 5), autoLevels=False)
         if not rect_set:
             img_item.setRect(QtCore.QRectF(-12000, -12000, 24000, 24000))
             rect_set = True
@@ -278,19 +342,34 @@ def on_closing():
         stream.stop_stream()
         stream.close()
     p.terminate()
-    app.quit()  # 使用app.quit()而不是root.destroy()
+    app.quit()  
 
-# 不再需要Tkinter的关闭事件处理
-# root.protocol("WM_DELETE_WINDOW", on_closing)
 
-# 使用QTimer替代FuncAnimation
+
+
 timer = QtCore.QTimer()
 timer.timeout.connect(update)
 timer.start(5)  # 5ms刷新间隔
 
-# 显示窗口
-win.show()
+# 新增：按钮功能实现（只修改状态变量）
+def mirror_horizontal():
+    global mirror_h
+    mirror_h = not mirror_h
 
-# 使用PyQt的主循环，而不是Tkinter的
-# tk.mainloop()
+def mirror_vertical():
+    global mirror_v
+    mirror_v = not mirror_v
+
+def rotate_image():
+    global rotate_count
+    rotate_count = (rotate_count + 1) % 4
+
+mirror_h_btn.clicked.connect(mirror_horizontal)
+mirror_v_btn.clicked.connect(mirror_vertical)
+rotate_btn.clicked.connect(rotate_image)
+
+
 app.exec_()  # 使用PyQt的主循环
+# 显示窗口
+# win.show()  # 注释掉原来的
+container.show()
