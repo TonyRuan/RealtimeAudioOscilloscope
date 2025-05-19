@@ -213,13 +213,13 @@ accumulate_img = np.zeros((accumulate_size, accumulate_size), dtype=np.float32)
 img_item = pg.ImageItem()
 rect_set = False  # 新增标志变量
 # 设置ImageItem的坐标映射，使其覆盖整个plot区域
-# img_item.setRect(QtCore.QRectF(-12000, -12000, 24000, 24000))  # 这一行注释掉
+
 plot.addItem(img_item)
 scatter.setVisible(False)  # 隐藏原有散点
 
 # 在第一次 setImage 后设置 rect
 img_item.setImage(accumulate_img, levels=(0, 7), autoLevels=False)
-# img_item.setRect(QtCore.QRectF(-12000, -12000, 24000, 24000))  # 这一行注释掉
+
 
 # 更新函数
 def update():
@@ -243,35 +243,31 @@ def update():
             right = np.full(CHUNK//(2*sample_step), right_val, dtype=np.int32)
 
         max_points = min(2000, len(left))
-        # 对调xy，并将y取反，实现上下颠倒
-        current_x = right[:max_points]
-        current_y = -left[:max_points]
 
+        # 正确的左右镜像：x轴取反
+        current_x = -right[:max_points]  # 左右镜像
+        current_y = -left[:max_points]   # 上下镜像（新增：取反实现左右+上下镜像）
         points_to_add = len(current_x)
         x_data = np.roll(x_data, points_to_add)
         y_data = np.roll(y_data, points_to_add)
         x_data[:points_to_add] = current_x
         y_data[:points_to_add] = current_y
 
-        # 只用单一颜色显示所有点
         scatter.setData(x=x_data, y=y_data)
 
-        # 坐标归一化到图像索引（对调xy，并将y取反）
-        x_idx = ((current_x + 32768) / 65536 * (accumulate_size - 1)).astype(int)
-        y_idx = ((-current_y + 32768) / 65536 * (accumulate_size - 1)).astype(int)
+        x_idx = ((-right[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)  # 左右镜像
+        y_idx = ((-left[:max_points] + 32768) / 65536 * (accumulate_size - 1)).astype(int)   # 上下镜像（新增：取反实现左右+上下镜像）
 
-        # 累积亮度（加快衰减）
-        accumulate_img *= 0.8  # 残影更快消失
+        accumulate_img *= 0.8
         for xi, yi in zip(x_idx, y_idx):
             if 0 <= xi < accumulate_size and 0 <= yi < accumulate_size:
                 accumulate_img[yi, xi] += 1.0
 
-        # 显示累积图像（进一步缩小levels范围）
         img_item.setImage(accumulate_img, levels=(0, 7), autoLevels=False)
         if not rect_set:
             img_item.setRect(QtCore.QRectF(-12000, -12000, 24000, 24000))
             rect_set = True
-        print("max:", accumulate_img.max(), "min:", accumulate_img.min())  # 调试用
+        print("max:", accumulate_img.max(), "min:", accumulate_img.min())
 
     except Exception as e:
         print(f"错误: {e}")
