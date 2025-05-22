@@ -278,7 +278,14 @@ mirror_h = False
 mirror_v = False
 rotate_count = 0  # 0, 1, 2, 3，表示旋转0/90/180/270度
 
-# 更新函数
+# 新增：创建输入框用于调节accumulate_img
+input_box = QtWidgets.QLineEdit()
+input_box.setPlaceholderText("输入衰减系数 (1-100)")
+input_box.setToolTip("调整累积图像衰减系数")
+
+# 添加输入框到布局
+button_layout.addWidget(input_box)
+
 def update():
     global x_data, y_data, accumulate_img, rect_set
 
@@ -331,7 +338,15 @@ def update():
         if not rect_set:
             img_item.setRect(QtCore.QRectF(-12000, -12000, 24000, 24000))
             rect_set = True
-        print("max:", accumulate_img.max(), "min:", accumulate_img.min())
+        # print("max:", accumulate_img.max(), "min:", accumulate_img.min())
+
+        # 获取输入框的值并计算衰减系数
+        try:
+            decay_factor = float(input_box.text()) / 100.0
+            if 0 < decay_factor <= 1:
+                accumulate_img *= decay_factor
+        except ValueError:
+            pass  # 如果输入无效，则忽略
 
     except Exception as e:
         print(f"错误: {e}")
